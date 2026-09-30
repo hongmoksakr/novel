@@ -6,9 +6,9 @@ export interface NovelSettings {
   femaleLead: string;
   supportingChars: string;
   writingStyle: string; // 문체
-  storyPov: string; // 사건 시점 (예: 1인칭 주인공 시점, 전지적 작가 시점 등)
-  narrativeTense: string; // 작성 시점 (과거형, 현재형 등)
-  targetAudience: string; // 염두에 둔 독자층
+  storyPov: string; // 사건 시점
+  narrativeTense: string; // 작성 시점
+  targetAudience: string; // 타깃 독자층
   synopsis: string;
 }
 
@@ -69,4 +69,13 @@ export interface ChatMessage {
     payload: any;
     label: string;
   };
+}
+
+export interface ProjectFullData {
+  version: string;
+  exportedAt: string;
+  settings: NovelSettings;
+  episodes: Episode[];
+  personas: CommenterPersona[];
+  comments: EpisodeComment[];
 }

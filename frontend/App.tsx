@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NovelSettings, Episode, CommenterPersona, EpisodeComment, ProjectFullData } from './types';
+import { NovelSettings, Episode, CommenterPersona, EpisodeComment, ProjectFullData, ActionProposal } from './types';
 import { 
   INITIAL_SETTINGS, 
   INITIAL_PERSONAS, 
@@ -132,6 +132,142 @@ export default function App() {
     alert(`[${data.settings.title}] 원고를 성공적으로 불러왔습니다! 이어서 집필을 시작하세요.`);
   };
 
+  // Direct application of Action Proposal from Chat
+  const handleApplyActionProposal = (proposal: ActionProposal) => {
+    switch (proposal.type) {
+      case 'update_settings': {
+        const payload = { ...proposal.payload };
+        // Defensively sanitize object values to strings so that textareas and string functions don't crash
+        const stringFields = ['title', 'genre', 'maleLead', 'femaleLead', 'supportingChars', 'writingStyle', 'storyPov', 'narrativeTense', 'targetAudience', 'synopsis'];
+        stringFields.forEach(field => {
+          if (payload[field] && typeof payload[field] === 'object' && !Array.isArray(payload[field])) {
+            try {
+              payload[field] = Object.entries(payload[field])
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(', ');
+            } catch {
+              payload[field] = JSON.stringify(payload[field]);
+            }
+          }
+        });
+
+        setSettings(prev => ({
+          ...prev,
+          ...payload
+        }));
+        // Switch to Step 1 so the user immediately sees the change
+        setCurrentStep(1);
+        break;
+      }
+
+      case 'add_episode': {
+        const payload = proposal.payload;
+        const newEp: Episode = {
+          id: `ep-${Date.now()}`,
+          stageId: typeof payload.stageId === 'number' ? payload.stageId : 1,
+          stageTitle: typeof payload.stageTitle === 'string' ? payload.stageTitle : '새로운 단계',
+          epNumber: episodes.length + 1,
+          title: typeof payload.title === 'string' ? payload.title : `제${episodes.length + 1}화. 새로운 전개`,
+          summary: typeof payload.summary === 'string' ? payload.summary : '',
+          keyEvents: Array.isArray(payload.keyEvents) ? payload.keyEvents : ['사건 1', '사건 2'],
+          conflict: typeof payload.conflict === 'string' ? payload.conflict : '',
+          content: typeof payload.content === 'string' ? payload.content : ''
+        };
+        setEpisodes(prev => [...prev, newEp]);
+        // Switch to Step 2 to view outline
+        setCurrentStep(2);
+        break;
+      }
+
+      case 'update_episode': {
+        const payload = proposal.payload;
+        setEpisodes(prev =>
+          prev.map(ep => {
+            if (payload.id && ep.id === payload.id) {
+              return { ...ep, ...payload };
+            }
+            return ep;
+          })
+        );
+        setCurrentStep(2);
+        break;
+      }
+
+      case 'replace_content': {
+        const newContent = typeof proposal.payload?.content === 'string' 
+          ? proposal.payload.content 
+          : JSON.stringify(proposal.payload?.content || '');
+        // Apply to current active or first episode
+        setEpisodes(prev => {
+          if (prev.length === 0) return prev;
+          const updated = [...prev];
+          updated[0] = { ...updated[0], content: newContent };
+          return updated;
+        });
+        setCurrentStep(3);
+        break;
+      }
+
+      case 'append_content': {
+        const appendText = typeof proposal.payload?.content === 'string' 
+          ? proposal.payload.content 
+          : JSON.stringify(proposal.payload?.content || '');
+        setEpisodes(prev => {
+          if (prev.length === 0) return prev;
+          const updated = [...prev];
+          updated[0] = { 
+            ...updated[0], 
+            content: (updated[0].content ? updated[0].content + '\n\n' : '') + appendText 
+          };
+          return updated;
+        });
+        setCurrentStep(3);
+        break;
+      }
+
+      case 'add_persona': {
+        const payload = proposal.payload;
+        const newPersona: CommenterPersona = {
+          id: `p-${Date.now()}`,
+          name: typeof payload.name === 'string' ? payload.name : '새독자',
+          platform: payload.platform || '노벨피아',
+          age: typeof payload.age === 'string' ? payload.age : '20대',
+          gender: typeof payload.gender === 'string' ? payload.gender : '여성',
+          personality: typeof payload.personality === 'string' ? payload.personality : '',
+          toneStyle: typeof payload.toneStyle === 'string' ? payload.toneStyle : '',
+          favoriteGenre: typeof payload.favoriteGenre === 'string' ? payload.favoriteGenre : '로맨스',
+          avatarColor: payload.avatarColor || 'bg-indigo-600'
+        };
+        setPersonas(prev => [...prev, newPersona]);
+        setCurrentStep(5);
+        break;
+      }
+
+      case 'add_comment': {
+        const payload = proposal.payload;
+        const targetEpId = episodes[0]?.id || 'ep-1';
+        const newComment: EpisodeComment = {
+          id: `c-${Date.now()}`,
+          episodeId: payload.episodeId || targetEpId,
+          personaId: payload.personaId || 'chat-persona',
+          personaName: typeof payload.personaName === 'string' ? payload.personaName : '독자',
+          platform: payload.platform || '노벨피아',
+          content: typeof payload.content === 'string' ? payload.content : '',
+          likes: payload.likes || 1,
+          dislikes: 0,
+          createdAt: '방금 전',
+          reactionTag: payload.reactionTag || '과몰입'
+        };
+        setComments(prev => [newComment, ...prev]);
+        setCurrentStep(5);
+        break;
+      }
+
+      default:
+        console.warn('Unknown proposal type:', proposal.type);
+    }
+  };
+
   // If user is not authenticated, render Login Lock Screen
   if (!currentUser) {
     return <AuthLockScreen onLoginSuccess={(userId) => setCurrentUser(userId)} />;
@@ -148,9 +284,9 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
-      {/* LEFT SIDE: AI Chat Assistant (Fixed 360px ~ 400px on desktop) */}
+      {/* LEFT SIDE: AI Chat Assistant with Direct Step Action Proposals */}
       <div
-        className={`fixed inset-y-0 left-0 z-40 w-80 md:w-96 lg:w-[390px] transform transition-transform duration-300 ease-in-out md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 w-80 md:w-96 lg:w-[410px] transform transition-transform duration-300 ease-in-out md:static md:translate-x-0 ${
           isMobileChatOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -159,6 +295,7 @@ export default function App() {
           settings={settings}
           episodes={episodes}
           personas={personas}
+          onApplyActionProposal={handleApplyActionProposal}
           onNavigateStep={(step) => setCurrentStep(step)}
         />
       </div>

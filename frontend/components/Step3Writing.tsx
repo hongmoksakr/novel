@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { NovelSettings, Episode } from '../types';
-import { Sparkles, Wand2, Sliders, ArrowRight, ArrowLeft, Check, Copy, BookOpen } from 'lucide-react';
-import { draftEpisodeContentAI } from '../services/geminiService';
+import { 
+  Sparkles, Wand2, Sliders, ArrowRight, ArrowLeft, 
+  Check, Copy, BookOpen, Flame, FileText, Info 
+} from 'lucide-react';
+import { draftEpisodeContentAI, MultiplierLevel } from '../services/geminiService';
 
 interface Step3WritingProps {
   settings: NovelSettings;
@@ -11,6 +14,8 @@ interface Step3WritingProps {
   onPrev: () => void;
 }
 
+const MULTIPLIER_OPTIONS: MultiplierLevel[] = [100, 125, 150, 175, 200];
+
 export const Step3Writing: React.FC<Step3WritingProps> = ({
   settings,
   episodes,
@@ -19,7 +24,8 @@ export const Step3Writing: React.FC<Step3WritingProps> = ({
   onPrev,
 }) => {
   const [selectedEpId, setSelectedEpId] = useState<string>(episodes[0]?.id || '');
-  const [lengthMultiplier, setLengthMultiplier] = useState<1.0 | 1.25 | 1.5>(1.0);
+  const [lengthMultiplier, setLengthMultiplier] = useState<MultiplierLevel>(100);
+  const [intensityLevel, setIntensityLevel] = useState<MultiplierLevel>(100);
   const [isDrafting, setIsDrafting] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -36,7 +42,6 @@ export const Step3Writing: React.FC<Step3WritingProps> = ({
     if (!activeEpisode) return;
     setIsDrafting(true);
 
-    // Find previous episode content snippet if any
     const activeIndex = episodes.findIndex(e => e.id === activeEpisode.id);
     const prevEpSnippet = activeIndex > 0 ? episodes[activeIndex - 1].content.slice(-400) : undefined;
 
@@ -45,11 +50,12 @@ export const Step3Writing: React.FC<Step3WritingProps> = ({
         activeEpisode,
         settings,
         lengthMultiplier,
+        intensityLevel,
         prevEpSnippet
       );
       handleUpdateContent(generated);
     } catch (err) {
-      alert('소설 본문 집필 중 오류가 발생했습니다.');
+      alert('소설 본문 집필 중 오류가 발생했습니다. 다시 시도해주세요.');
     } finally {
       setIsDrafting(false);
     }
@@ -64,53 +70,128 @@ export const Step3Writing: React.FC<Step3WritingProps> = ({
 
   const wordCount = activeEpisode?.content?.length || 0;
 
+  const getIntensityDescription = (level: MultiplierLevel) => {
+    switch (level) {
+      case 100:
+        return '기본 100%: 은밀한 긴장감, 심리적 배덕감, 낮게 깔리는 차가운 명령과 첫 규칙 부여';
+      case 125:
+        return '125%: 노골적인 수치심 유발, 거친 언어적 훈육, 스승과 제자의 위계가 뒤흔들리는 체벌';
+      case 150:
+        return '150%: 음탕하고 직설적인 복종 서술, 전도사의 단정한 가면 아래 숨겨진 메조히즘 굴복';
+      case 175:
+        return '175%: 성역 속 극단적 배덕감, 원색적인 육체적 체벌과 천박한 훈육 대사 폭발';
+      case 200:
+        return '최고 수위 200%: 가식과 위선을 완전히 찢어발기는 극도의 음탕함과 파멸적 타락의 절정';
+    }
+  };
+
+  const getLengthDescription = (level: MultiplierLevel) => {
+    switch (level) {
+      case 100:
+        return '100% (기본 약 2,000자 내외)';
+      case 125:
+        return '125% (풍성 약 2,600자 내외)';
+      case 150:
+        return '150% (대용량 약 3,500자 내외)';
+      case 175:
+        return '175% (초고용량 약 4,500자 내외)';
+      case 200:
+        return '200% (극대용량 약 5,500자 이상)';
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-12">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-brand-950/40 to-slate-900 p-6 rounded-2xl border border-brand-500/20 shadow-xl">
+      <div className="bg-gradient-to-r from-slate-900 via-rose-950/30 to-slate-900 p-6 rounded-2xl border border-rose-500/20 shadow-xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-brand-500/20 text-brand-400 border border-brand-500/30">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
                 3단계
               </span>
               <h1 className="text-xl font-bold text-white">에피소드 본문 정밀 집필</h1>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              2단계에서 구성된 얼개를 기반으로 실제 웹소설 본문을 완성합니다. 분량을 100%, 125%, 150%로 유연하게 조절하여 집필할 수 있습니다.
+              수위(100%~200%)와 분량(100%~200%)을 정밀하게 제어하여 사제지간 개신교회 심리조교 원고를 완성합니다.
             </p>
           </div>
 
-          {/* Volume Control Switcher */}
-          <div className="flex items-center gap-2 bg-slate-900/90 p-1.5 rounded-xl border border-slate-700">
-            <span className="text-[11px] font-medium text-slate-400 pl-2 flex items-center gap-1">
-              <Sliders className="w-3 h-3 text-brand-400" />
-              분량 조절:
-            </span>
-            <button
-              onClick={() => setLengthMultiplier(1.0)}
-              className={`px-2.5 py-1 text-xs rounded-lg font-semibold transition ${
-                lengthMultiplier === 1.0 ? 'bg-brand-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              100% (기본)
-            </button>
-            <button
-              onClick={() => setLengthMultiplier(1.25)}
-              className={`px-2.5 py-1 text-xs rounded-lg font-semibold transition ${
-                lengthMultiplier === 1.25 ? 'bg-brand-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              125% (풍성)
-            </button>
-            <button
-              onClick={() => setLengthMultiplier(1.5)}
-              className={`px-2.5 py-1 text-xs rounded-lg font-semibold transition ${
-                lengthMultiplier === 1.5 ? 'bg-brand-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              150% (대용량)
-            </button>
+          <div className="flex items-center gap-2 text-xs font-mono bg-slate-900/90 px-3.5 py-2 rounded-xl border border-slate-800 text-slate-300">
+            <span className="text-rose-400 font-bold">수위 {intensityLevel}%</span>
+            <span className="text-slate-600">|</span>
+            <span className="text-brand-400 font-bold">분량 {lengthMultiplier}%</span>
+          </div>
+        </div>
+
+        {/* Dual Controller: Intensity & Length */}
+        <div className="mt-5 pt-4 border-t border-slate-800/80 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Intensity Slider Controller */}
+          <div className="bg-slate-950/70 p-3.5 rounded-xl border border-rose-500/20 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-rose-300 flex items-center gap-1.5">
+                <Flame className="w-3.5 h-3.5 text-rose-400 fill-rose-400" />
+                묘사 수위 설정 (음탕하고 천박한 서술)
+              </span>
+              <span className="text-xs font-mono font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                {intensityLevel}%
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {MULTIPLIER_OPTIONS.map((val) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setIntensityLevel(val)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${
+                    intensityLevel === val
+                      ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30 ring-1 ring-rose-400'
+                      : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  {val}%
+                </button>
+              ))}
+            </div>
+
+            <p className="text-[11px] text-slate-400 leading-snug">
+              {getIntensityDescription(intensityLevel)}
+            </p>
+          </div>
+
+          {/* Length Slider Controller */}
+          <div className="bg-slate-950/70 p-3.5 rounded-xl border border-brand-500/20 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-brand-300 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-brand-400" />
+                집필 분량 설정 (원고 글자수 확장)
+              </span>
+              <span className="text-xs font-mono font-bold text-brand-400 bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/20">
+                {lengthMultiplier}%
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {MULTIPLIER_OPTIONS.map((val) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setLengthMultiplier(val)}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition ${
+                    lengthMultiplier === val
+                      ? 'bg-brand-600 text-white shadow-md shadow-brand-600/30 ring-1 ring-brand-400'
+                      : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  {val}%
+                </button>
+              ))}
+            </div>
+
+            <p className="text-[11px] text-slate-400 leading-snug">
+              {getLengthDescription(lengthMultiplier)}
+            </p>
           </div>
         </div>
       </div>
@@ -159,18 +240,34 @@ export const Step3Writing: React.FC<Step3WritingProps> = ({
                 {activeEpisode.summary}
               </div>
               <div className="text-xs text-slate-300 leading-relaxed bg-slate-950 p-2.5 rounded-lg border border-slate-800/80">
-                <span className="text-[10px] text-amber-400 block mb-1">핵심 갈등 & 복선:</span>
+                <span className="text-[10px] text-rose-400 block mb-1">핵심 갈등 & 배덕감:</span>
                 {activeEpisode.conflict}
+              </div>
+
+              {/* Status Indicator */}
+              <div className="p-2.5 rounded-lg bg-slate-950/90 border border-slate-800 text-[11px] space-y-1 text-slate-400">
+                <div className="flex justify-between">
+                  <span>선택 수위:</span>
+                  <span className="text-rose-400 font-bold">{intensityLevel}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>선택 분량:</span>
+                  <span className="text-brand-400 font-bold">{lengthMultiplier}%</span>
+                </div>
               </div>
 
               {/* AI Draft Button */}
               <button
                 onClick={handleDraftWithAi}
                 disabled={isDrafting}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg shadow-brand-500/20 text-xs transition"
+                className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-rose-600 via-purple-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg shadow-rose-500/20 text-xs transition"
               >
                 <Wand2 className={`w-4 h-4 ${isDrafting ? 'animate-spin' : ''}`} />
-                <span>{isDrafting ? 'AI 본문 집필 중...' : `AI로 ${lengthMultiplier * 100}% 분량 집필하기`}</span>
+                <span>
+                  {isDrafting 
+                    ? 'AI 집필 중...' 
+                    : `수위 ${intensityLevel}% / 분량 ${lengthMultiplier}% 집필하기`}
+                </span>
               </button>
             </div>
           </div>
@@ -180,12 +277,14 @@ export const Step3Writing: React.FC<Step3WritingProps> = ({
             <div className="flex items-center justify-between text-xs text-slate-400 px-1">
               <span>원고 작성창 (마우스로 드래그하면 4단계에서 부분 수정 가능)</span>
               <div className="flex items-center gap-3">
-                <span className="font-mono text-slate-300">공백 포함: <strong className="text-brand-400">{wordCount.toLocaleString()}</strong>자</span>
+                <span className="font-mono text-slate-300">
+                  공백 포함: <strong className="text-brand-400">{wordCount.toLocaleString()}</strong>자
+                </span>
                 <button
                   onClick={handleCopy}
                   className="flex items-center gap-1 hover:text-white transition"
                 >
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
                   <span>{copied ? '복사됨!' : '본문 복사'}</span>
                 </button>
               </div>
@@ -195,8 +294,8 @@ export const Step3Writing: React.FC<Step3WritingProps> = ({
               rows={22}
               value={activeEpisode.content}
               onChange={(e) => handleUpdateContent(e.target.value)}
-              placeholder="여기에 소설 본문을 직접 작성하거나, 좌측 [AI로 집필하기] 버튼을 눌러보세요..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-6 text-sm md:text-base leading-loose font-serif text-slate-100 placeholder-slate-600 focus:outline-none focus:border-brand-500 shadow-inner"
+              placeholder="여기에 소설 본문을 직접 작성하거나, 좌측 [수위 및 분량 설정 후 AI로 집필하기] 버튼을 눌러보세요..."
+              className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-6 text-sm md:text-base leading-loose font-serif text-slate-100 placeholder-slate-600 focus:outline-none focus:border-rose-500/60 shadow-inner"
             />
           </div>
         </div>

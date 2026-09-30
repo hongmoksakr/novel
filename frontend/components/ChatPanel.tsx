@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Bot, Send, Sparkles, User, RefreshCw, Compass, Lightbulb, 
-  Wand2, ArrowRight, MessageSquareText, FileText 
+  Wand2, ArrowRight, MessageSquareText, FileText, Check, 
+  Layers, ChevronRight, Zap
 } from 'lucide-react';
-import { NovelSettings, Episode, CommenterPersona, ChatMessage } from '../types';
+import { NovelSettings, Episode, CommenterPersona, ChatMessage, ActionProposal } from '../types';
 import { askNovelAssistant } from '../services/geminiService';
 
 interface ChatPanelProps {
@@ -11,15 +12,36 @@ interface ChatPanelProps {
   settings: NovelSettings;
   episodes: Episode[];
   personas: CommenterPersona[];
-  onApplySettings?: (newSettings: Partial<NovelSettings>) => void;
+  onApplyActionProposal: (proposal: ActionProposal) => void;
   onNavigateStep: (step: number) => void;
 }
+
+// Safely convert any value (string, object, array, number) to truncated preview string
+const safePreviewText = (val: any, maxLen: number = 50): string => {
+  if (val == null) return '';
+  let str = '';
+  if (typeof val === 'string') {
+    str = val;
+  } else if (typeof val === 'object') {
+    try {
+      str = Object.entries(val)
+        .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+        .join(', ');
+    } catch {
+      str = JSON.stringify(val);
+    }
+  } else {
+    str = String(val);
+  }
+  return str.length > maxLen ? `${str.slice(0, maxLen)}...` : str;
+};
 
 export const ChatPanel: React.FC<ChatPanelProps> = ({
   currentStep,
   settings,
   episodes,
   personas,
+  onApplyActionProposal,
   onNavigateStep,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -29,13 +51,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       content: `반갑습니다, 작가님. 당신의 전담 웹소설 디렉터 AI입니다. ✍️
 현재 **${currentStep}단계**를 진행 중이십니다.
 
-본 작품은 **사제지간, 연상연하, 개신교회 연애, 메조히스트 여성, 심리적 조교**라는 강렬한 배덕감과 밀도 높은 긴장감을 다룹니다.
-교회라는 성역 속 둘만의 은밀한 규칙 설정, 종교적 죄책감과 쾌락의 대비, 숨 막히는 호흡의 대사 퇴고까지 무엇이든 명령하세요!`,
+채팅창에 명령이나 아이디어를 말씀하시면, 대화 답변과 함께 **현재 단계(${currentStep}단계)의 구체적인 설정/플롯/본문/댓글러에 즉시 반영할 수 있는 전용 적용 버튼**이 생성됩니다!`,
       timestamp: '방금 전'
     }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -45,6 +67,11 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages, loading]);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   const handleSend = async (customPrompt?: string) => {
     const textToSend = customPrompt || input.trim();
@@ -62,7 +89,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     setLoading(true);
 
     try {
-      const reply = await askNovelAssistant(textToSend, {
+      const response = await askNovelAssistant(textToSend, {
         currentStep,
         settings,
         episodes,
@@ -72,8 +99,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       const assistantMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         role: 'assistant',
-        content: reply,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        content: response.messageText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        proposal: response.proposal
       };
 
       setMessages(prev => [...prev, assistantMsg]);
@@ -84,43 +112,57 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     }
   };
 
+  const handleExecuteProposal = (msgId: string, proposal: ActionProposal) => {
+    onApplyActionProposal(proposal);
+    // Mark as applied in message state
+    setMessages(prev =>
+      prev.map(m => {
+        if (m.id === msgId && m.proposal) {
+          return {
+            ...m,
+            proposal: { ...m.proposal, applied: true }
+          };
+        }
+        return m;
+      })
+    );
+    showToast(`✓ [${proposal.targetStep}단계]에 성공적으로 반영되었습니다!`);
+  };
+
   // Step-specific contextual suggestion prompts focused on the genre
   const getQuickPrompts = () => {
     switch (currentStep) {
       case 1:
         return [
-          '교회 성가대실에서 연하남이 연상 전도사에게 걸 첫 번째 복종 규칙 추천해줘',
-          '모태신앙 여주인공의 종교적 죄책감과 메조히즘 심리 설정 디테일',
-          '둘의 관계를 의심하는 청년부 회장 조연과의 갈등 구도 구상'
+          '남주인공을 더 냉혹하고 치밀한 성격으로 디테일 보강해서 1단계에 반영해줘',
+          '여주인공 전도사의 내면 메조히즘 갈등을 구체적으로 수정해서 1단계에 반영해줘',
+          '제목을 더 파격적이고 배덕감 넘치게 추천해서 1단계에 적용해줘'
         ];
       case 2:
         return [
-          '5단계(첫 관문 통과)에서 심야 본당 뒷편 체벌 사건 연출 아이디어',
-          '8단계(절체절명 시련)에서 교회 익명 고발로 들킬 위기 플롯',
-          '여름 수련회 기도원 고립 상황에서 영웅의 여정 12단계 배치 팁'
+          '5단계(첫 관문 통과)에 심야 본당 뒷편 체벌 에피소드를 2단계 플롯에 추가해줘',
+          '8단계(절체절명 시련)에 비밀 쪽지가 들통날 위기 에피소드를 2단계 플롯에 추가해줘',
+          '청년부 여름 수련회 기도원 고립 에피소드를 2단계 플롯에 등록해줘'
         ];
       case 3:
         return [
-          '대예배 설교 도중 주고받는 비밀스러운 신호 본문 150% 분량 팁',
-          '연하남의 차분한 존댓말 통제와 여주의 떨리는 호흡 티키타카',
-          '1화 엔딩에서 다음 화를 누를 수밖에 없는 클리프행어 조언'
+          '지금 에피소드 본문으로 쓸 수 있는 팽팽한 호흡의 본문 원고를 작성해서 3단계에 반영해줘',
+          '성가대실에서 비밀 규칙을 하달하는 텐션 높은 본문을 3단계에 채워줘'
         ];
       case 4:
         return [
-          '뺨을 맞거나 무릎 꿇는 순간의 감각과 심장 박동을 극대화해줘',
-          '거룩한 찬송가 가사와 배덕한 육체적 복종을 교차시키는 문장 윤문',
-          '여주의 수치심과 전율을 섬세하게 드러내는 묘사 수정'
+          '선택된 문장의 감각 묘사와 서늘한 텐션을 극대화해줘',
+          '찬송가 가사와 육체적 복종을 교차시키는 문장으로 다듬어줘'
         ];
       case 5:
         return [
-          '리디북스/더쿠 독자들이 남주의 냉혹한 지배력에 열광하는 댓글 예시',
-          '실제 개신교회 출신 독자들이 소름 돋아 할 현실 고증 반응',
-          '1회부터 5회까지 점점 수위와 굴종이 깊어질 때의 정주행 반응'
+          '더쿠에서 과몰입해서 울부짖는 새 댓글러 페르소나를 5단계에 추가해줘',
+          '노벨피아에서 연하남 조교 빌드업을 찬양하는 댓글러 페르소나를 5단계에 추가해줘'
         ];
       case 6:
         return [
-          '독자가 단숨에 결제하게 만드는 웹 뷰어 첫 문장 임팩트 점검',
-          '작품 소개글(어그로 카피라이팅) 3종 추천해줘'
+          '웹 뷰어 독자들을 사로잡을 강렬한 1화 첫 문단 피드백 줘',
+          '작품 소개글(카피라이팅) 3종 추천해줘'
         ];
       default:
         return ['배덕감 극대화 연출', '심리 조교 규칙 추천', '교회물 클리셰 비틀기'];
@@ -128,7 +170,15 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-900/90 border-r border-slate-800 text-slate-200">
+    <div className="flex flex-col h-full bg-slate-900/90 border-r border-slate-800 text-slate-200 relative">
+      {/* Toast Banner */}
+      {toastMessage && (
+        <div className="absolute top-16 left-4 right-4 z-50 p-3 bg-emerald-600 text-white text-xs font-bold rounded-xl shadow-xl flex items-center justify-between animate-bounce">
+          <span>{toastMessage}</span>
+          <Check className="w-4 h-4" />
+        </div>
+      )}
+
       {/* Header */}
       <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/95">
         <div className="flex items-center gap-3">
@@ -151,7 +201,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               {
                 id: `reset-${Date.now()}`,
                 role: 'assistant',
-                content: `대화가 새로 정리되었습니다. 현재 **${currentStep}단계**에 맞추어 창작에 필요한 질문을 던져주세요! 💡`,
+                content: `대화가 새로 정리되었습니다. 현재 **${currentStep}단계**에 맞추어 창작에 필요한 질문과 명령을 내려주세요! 💡`,
                 timestamp: '방금 전'
               }
             ]);
@@ -168,32 +218,106 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex flex-col gap-1.5 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
           >
-            {msg.role === 'assistant' && (
-              <div className="w-7 h-7 rounded-lg bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center shrink-0 mt-0.5">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              </div>
-            )}
-            <div
-              className={`max-w-[85%] rounded-2xl p-3.5 leading-relaxed shadow-sm ${
-                msg.role === 'user'
-                  ? 'bg-brand-600 text-white rounded-tr-sm ml-4'
-                  : 'bg-slate-800/90 text-slate-100 border border-slate-700/60 rounded-tl-sm'
-              }`}
-            >
-              <div className="whitespace-pre-wrap">{msg.content}</div>
+            <div className={`flex gap-3 max-w-[95%] ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {msg.role === 'assistant' && (
+                <div className="w-7 h-7 rounded-lg bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center shrink-0 mt-0.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                </div>
+              )}
               <div
-                className={`text-[10px] mt-1.5 flex justify-end ${
-                  msg.role === 'user' ? 'text-brand-200' : 'text-slate-400'
+                className={`rounded-2xl p-3.5 leading-relaxed shadow-sm ${
+                  msg.role === 'user'
+                    ? 'bg-brand-600 text-white rounded-tr-sm ml-4'
+                    : 'bg-slate-800/90 text-slate-100 border border-slate-700/60 rounded-tl-sm'
                 }`}
               >
-                {msg.timestamp}
+                <div className="whitespace-pre-wrap">{msg.content}</div>
+                <div
+                  className={`text-[10px] mt-1.5 flex justify-end ${
+                    msg.role === 'user' ? 'text-brand-200' : 'text-slate-400'
+                  }`}
+                >
+                  {msg.timestamp}
+                </div>
               </div>
+              {msg.role === 'user' && (
+                <div className="w-7 h-7 rounded-lg bg-brand-700 flex items-center justify-center shrink-0 mt-0.5 text-white">
+                  <User className="w-3.5 h-3.5" />
+                </div>
+              )}
             </div>
-            {msg.role === 'user' && (
-              <div className="w-7 h-7 rounded-lg bg-brand-700 flex items-center justify-center shrink-0 mt-0.5 text-white">
-                <User className="w-3.5 h-3.5" />
+
+            {/* Direct Action Proposal Card if present */}
+            {msg.proposal && msg.proposal.payload && (
+              <div className="ml-10 max-w-[88%] w-full bg-slate-950/90 border border-brand-500/40 rounded-2xl p-3.5 space-y-2.5 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-brand-400 flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-brand-400 fill-brand-400" />
+                    <span>[{msg.proposal.targetStep}단계 즉시 반영 추천]</span>
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+                    {msg.proposal.type}
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-200 font-medium">
+                  {msg.proposal.summary}
+                </p>
+
+                {/* Safe payload sneak-peek */}
+                <div className="text-[11px] text-slate-400 bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 font-mono max-h-24 overflow-y-auto space-y-0.5">
+                  {msg.proposal.type === 'update_settings' && (
+                    <div>
+                      {msg.proposal.payload.title && <div>• 제목: {safePreviewText(msg.proposal.payload.title, 40)}</div>}
+                      {msg.proposal.payload.maleLead && <div>• 남주: {safePreviewText(msg.proposal.payload.maleLead, 50)}</div>}
+                      {msg.proposal.payload.femaleLead && <div>• 여주: {safePreviewText(msg.proposal.payload.femaleLead, 50)}</div>}
+                      {msg.proposal.payload.synopsis && <div>• 시놉시스: {safePreviewText(msg.proposal.payload.synopsis, 60)}</div>}
+                    </div>
+                  )}
+                  {msg.proposal.type === 'add_episode' && (
+                    <div>
+                      <div>• 에피소드: {safePreviewText(msg.proposal.payload.title, 40)}</div>
+                      <div>• 단계: {safePreviewText(msg.proposal.payload.stageTitle, 30)}</div>
+                      <div>• 요약: {safePreviewText(msg.proposal.payload.summary, 60)}</div>
+                    </div>
+                  )}
+                  {msg.proposal.type === 'replace_content' && (
+                    <div>
+                      <div>• 본문 내용: {safePreviewText(msg.proposal.payload.content, 80)}</div>
+                    </div>
+                  )}
+                  {msg.proposal.type === 'add_persona' && (
+                    <div>
+                      <div>• 닉네임: {safePreviewText(msg.proposal.payload.name, 20)} ({safePreviewText(msg.proposal.payload.platform, 15)})</div>
+                      <div>• 말투: "{safePreviewText(msg.proposal.payload.toneStyle, 40)}"</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Apply Button */}
+                <button
+                  onClick={() => handleExecuteProposal(msg.id, msg.proposal!)}
+                  disabled={msg.proposal.applied}
+                  className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-bold transition shadow-md ${
+                    msg.proposal.applied
+                      ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/30 cursor-default'
+                      : 'bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white shadow-brand-500/20 active:scale-95'
+                  }`}
+                >
+                  {msg.proposal.applied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{msg.proposal.targetStep}단계에 반영 완료됨</span>
+                    </>
+                  ) : (
+                    <>
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>{msg.proposal.label}</span>
+                    </>
+                  )}
+                </button>
               </div>
             )}
           </div>
@@ -202,7 +326,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         {loading && (
           <div className="flex items-center gap-2 text-xs text-brand-400 p-2 bg-slate-800/60 rounded-xl border border-slate-700/50 w-fit">
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            <span>AI가 플롯과 심리 묘사를 분석하고 있습니다...</span>
+            <span>AI가 단계별 반영 데이터와 아이디어를 분석하고 있습니다...</span>
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -212,14 +336,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       <div className="p-3 border-t border-slate-800/80 bg-slate-900/60">
         <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-2">
           <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-          <span>현재 단계 추천 질문:</span>
+          <span>현재 {currentStep}단계 직접 반영 추천 명령:</span>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {getQuickPrompts().map((prompt, i) => (
             <button
               key={i}
               onClick={() => handleSend(prompt)}
-              className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1 rounded-full border border-slate-700/70 transition flex items-center gap-1"
+              className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-2.5 py-1 rounded-full border border-slate-700/70 transition flex items-center gap-1 text-left"
             >
               <span>{prompt}</span>
             </button>
@@ -240,7 +364,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="아이디어 요청, 플롯 수정, 대사 추천을 명령하세요..."
+            placeholder={`현재 ${currentStep}단계에 반영할 지시를 입력하세요 (예: 남주 설정 변경, N화 추가 등)...`}
             className="w-full bg-slate-950/80 border border-slate-700 rounded-xl pl-3.5 pr-11 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
           />
           <button

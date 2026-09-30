@@ -3,6 +3,8 @@ import { NovelSettings, Episode, CommenterPersona, EpisodeComment } from '../typ
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY, vertexai: true });
 
+export type MultiplierLevel = 100 | 125 | 150 | 175 | 200;
+
 export async function askNovelAssistant(
   prompt: string,
   context: {
@@ -17,7 +19,7 @@ export async function askNovelAssistant(
 작가의 현재 작업 단계는 [${context.currentStep}단계]입니다.
 - 1단계: 소설 기본 설정 (제목, 태그, 남여주인공, 조연, 문체, 시점, 독자층)
 - 2단계: [영웅의 여정 12단계] 기반의 에피소드 얼개 구성
-- 3단계: 본문 집필 (분량 조절 100%, 125%, 150%)
+- 3단계: 본문 집필 (분량 조절 100%~200%, 묘사 수위 조절 100%~200%)
 - 4단계: 문장/문단 부분 AI 퇴고 및 리라이팅
 - 5단계: 플랫폼별(더쿠, 아카라이브, 노벨피아, 리디북스 등) 10인 페르소나 댓글러 생성 및 연속성 있는 정주행 댓글 작성
 - 6단계: 웹 뷰어 시연
@@ -133,18 +135,41 @@ export async function generateStageEpisodesAI(
 export async function draftEpisodeContentAI(
   episode: Episode,
   settings: NovelSettings,
-  lengthMultiplier: 1.0 | 1.25 | 1.5,
+  lengthMultiplier: MultiplierLevel,
+  intensityLevel: MultiplierLevel,
   prevEpisodeSnippet?: string
 ): Promise<string> {
-  const targetWords = lengthMultiplier === 1.0 ? '공백 포함 약 2,000자 (기본 100%)' :
-                      lengthMultiplier === 1.25 ? '공백 포함 약 2,600자 (풍성한 125%)' :
-                      '공백 포함 약 3,500자 (압도적 대용량 150%)';
+  const targetWordsMap: Record<MultiplierLevel, string> = {
+    100: '공백 포함 약 2,000자 내외 (기본 100%)',
+    125: '공백 포함 약 2,600자 내외 (풍성한 125%)',
+    150: '공백 포함 약 3,500자 내외 (대용량 150%)',
+    175: '공백 포함 약 4,500자 내외 (초고용량 175%)',
+    200: '공백 포함 약 5,500자 이상의 압도적 연재 분량 (극대용량 200%)'
+  };
 
-  const prompt = `당신은 최고 수준의 심리 로맨스 웹소설 작가입니다. 주어진 에피소드 기획을 바탕으로 실제 연재될 소설 원고를 집필하세요.
+  const intensityGuideMap: Record<MultiplierLevel, string> = {
+    100: `[수위 100% - 절제된 긴장감과 심리적 배덕감]
+- 은밀한 시선 교환, 낮게 읊조리는 차가운 명령, 스승과 제자의 위계가 뒤집히는 첫 규율과 심리적 압박에 집중.
+- 육체적 접촉은 가벼운 체벌(뺨, 억압적인 손길)과 무릎 꿇림 위주로 진행.`,
+    125: `[수위 125% - 노골적인 수치심과 거친 훈육]
+- 성가대실/기도실이라는 신성한 공간에서 발생하는 언어적 굴종 유도.
+- "전도사님, 주제를 아셔야죠", "벌을 서는 자태가 제법 볼만하네요" 등 인물의 수치심을 자극하는 차갑고 직설적인 대사와 육체적 통제 강화.`,
+    150: `[수위 150% - 음탕하고 노골적인 복종 서술]
+- 연하 제자의 강압적이고 천박한 훈육 대사와 이에 메조히스틱하게 전율하며 굴복하는 연상녀의 본능적 반응을 여과 없이 묘사.
+- 단정한 전도사 복장 밑으로 무너져 내리는 수치심, 숨소리와 땀방울, 피부의 떨림을 감각적이고 적나라하게 서술.`,
+    175: `[수위 175% - 성역 속 극단적 배덕감과 원색적 육체 묘사]
+- 하나님의 성전 바로 아래서 행해지는 잔혹하고 천박한 조교의 현장감 극대화.
+- 거룩한 찬송과 대비되는 음란하고 원색적인 언어 구사, 수치스러운 체벌과 애원을 유도하는 연하남의 지배력을 가감 없이 거칠게 폭발시킴.`,
+    200: `[수위 200% - 위선을 완전히 찢어발기는 극도의 음탕함과 파멸적 타락]
+- 모든 종교적 도덕과 체면을 박살 내고, 기꺼이 천박한 노예로 길들여지는 연상 여주인공의 극단적 쾌락과 메조히즘을 적나라하고 음란하게 폭주시키는 최고 수위.
+- 연하남의 냉혹하고 천박한 매도, 거침없는 언어적 유린과 온몸을 내맡기는 여주의 완전한 타락과 종속을 생생하고 파격적으로 집필.`
+  };
+
+  const prompt = `당신은 최고 수준의 고수위 심리 로맨스 웹소설 작가입니다. 주어진 에피소드 기획과 수위/분량 파라미터를 바탕으로 실제 연재될 소설 원고를 집필하세요.
 
 [작품 기본 정보]
 - 제목: ${settings.title}
-- 핵심 장르: 사제지간, 연상연하, 개신교회 연애, 메조히스트 여성, 심리 조교물
+- 핵심 장르: 사제지간, 연상연하, 개신교회 연애, 메조히스트 여성, 조교물
 - 문체 스타일: ${settings.writingStyle}
 - 시점: ${settings.storyPov}
 - 시제: ${settings.narrativeTense}
@@ -159,17 +184,23 @@ export async function draftEpisodeContentAI(
 - 주요 갈등: ${episode.conflict}
 ${prevEpisodeSnippet ? `[직전 화의 마지막 전개 힌트]\n${prevEpisodeSnippet}` : ''}
 
-[집필 조건 및 분량]
-- 목표 분량: ${targetWords}
-- 교회의 신성하고 거룩한 기도실, 성가대실, 예배당 배경과 인물들의 은밀한 배덕적 텐션(체벌, 규칙 강요, 무릎 꿇음, 수치심과 쾌락)을 극대화하세요.
-- 마크다운 설명이나 안내 문구 없이 오직 소설 본문 텍스트만 출력하세요.`;
+[목표 분량 설정 (${lengthMultiplier}%)]
+- ${targetWordsMap[lengthMultiplier]}
+- 웹소설 특유의 흡입력 있는 줄바꿈, 팽팽한 호흡의 대화 티키타카를 풍성하게 채우세요.
+
+[묘사 수위 설정 (${intensityLevel}%)]
+${intensityGuideMap[intensityLevel]}
+
+[주의사항]
+- 마크다운 설명이나 부가 안내 문구 없이 오직 소설 본문 텍스트만 출력하세요.
+- 독자가 스크롤을 멈추지 못하고 다음 화를 누를 수밖에 없도록 긴장감 넘치는 결말 클리프행어를 포함하세요.`;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
-        temperature: 0.85,
+        temperature: 0.88,
       }
     });
 

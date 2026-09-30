@@ -10,6 +10,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&family=Nanum+Myeongjo:wght@400;700;800&display=swap" rel="stylesheet">
     <script>
+      // 브라우저 정적 호스팅 환경에서 process.env 미정의로 인한 크래시 방지
+      window.process = window.process || { env: { API_KEY: '' } };
       tailwind.config = {
         theme: {
           extend: {
@@ -41,6 +43,6 @@
       </head>
   <body class="bg-slate-950 text-slate-100 antialiased font-sans overflow-hidden">
     <div id="root"></div>
-    <script type="module" src="index.tsx"></script>
-  </body>
+    <script type="module" src="./index.tsx"></script>
+  <script type="module" src="/index.js"></script></body>
 </html>

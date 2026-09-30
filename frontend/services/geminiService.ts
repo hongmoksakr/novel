@@ -1,9 +1,14 @@
 import { GoogleGenAI } from '@google/genai';
-import { NovelSettings, Episode, CommenterPersona, EpisodeComment } from '../types';
+import { NovelSettings, Episode, CommenterPersona, EpisodeComment, ActionProposal, ActionType } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY, vertexai: true });
 
 export type MultiplierLevel = 100 | 125 | 150 | 175 | 200;
+
+export interface AssistantResponse {
+  messageText: string;
+  proposal?: ActionProposal;
+}
 
 export async function askNovelAssistant(
   prompt: string,
@@ -12,25 +17,104 @@ export async function askNovelAssistant(
     settings: NovelSettings;
     episodes: Episode[];
     personas: CommenterPersona[];
+    activeEpisodeId?: string;
   }
-): Promise<string> {
-  const systemInstruction = `당신은 대한민국 최고의 웹소설 기획자이자 밀리언셀러 총괄 에디터 '스토리포지 AI'입니다.
-현재 집필 중인 작품의 핵심 장르는 [사제지간, 연상녀연하남, 개신교회 연애, 메조히스트 여성, 조교물(심리적 통제 및 복종)]입니다.
-작가의 현재 작업 단계는 [${context.currentStep}단계]입니다.
-- 1단계: 소설 기본 설정 (제목, 태그, 남여주인공, 조연, 문체, 시점, 독자층)
-- 2단계: [영웅의 여정 12단계] 기반의 에피소드 얼개 구성
-- 3단계: 본문 집필 (분량 조절 100%~200%, 묘사 수위 조절 100%~200%)
-- 4단계: 문장/문단 부분 AI 퇴고 및 리라이팅
-- 5단계: 플랫폼별(더쿠, 아카라이브, 노벨피아, 리디북스 등) 10인 페르소나 댓글러 생성 및 연속성 있는 정주행 댓글 작성
+): Promise<AssistantResponse> {
+  const activeEp = context.episodes.find(e => e.id === context.activeEpisodeId) || context.episodes[0];
+
+  const systemInstruction = `당신은 대한민국 최고 수준의 웹소설 디렉터 AI '스토리포지 에디터'입니다.
+핵심 장르는 [사제지간, 연상녀연하남, 개신교회 연애, 메조히스트 여성, 조교물(심리적 통제 및 복종)]입니다.
+현재 작가는 우측 화면의 [${context.currentStep}단계]를 집중 작업 중입니다.
+
+[각 단계 정의]
+- 1단계: 소설 기본 설정 (제목, 태그, 남여주인공, 조연, 문체, 시점, 독자층, 시놉시스)
+- 2단계: [영웅의 여정 12단계] 기반의 에피소드 플롯 설계 (화차 제목, 줄거리, 핵심사건, 갈등)
+- 3단계: 본문 집필 (대화 및 감각적 묘사 본문)
+- 4단계: 부분 문장/문단 윤문 및 퇴고
+- 5단계: 독자 페르소나 및 정주행 댓글
 - 6단계: 웹 뷰어 시연
 
 현재 소설 정보:
-제목: ${context.settings.title}
-장르/태그: ${context.settings.genre} / ${context.settings.tags.join(', ')}
-주인공: 남주(${context.settings.maleLead}) / 여주(${context.settings.femaleLead})
-문체: ${context.settings.writingStyle}
+- 제목: ${context.settings.title}
+- 장르/태그: ${context.settings.genre} / ${context.settings.tags.join(', ')}
+- 남주: ${context.settings.maleLead}
+- 여주: ${context.settings.femaleLead}
+- 현재 에피소드: ${activeEp ? `${activeEp.title} (${activeEp.stageTitle})` : '없음'}
 
-작가의 질문이나 요청에 대해 개신교회의 거룩하고 엄숙한 분위기와 등 뒤에서 벌어지는 배덕감, 연하남의 차가운 통제력, 여주의 갈등과 굴복 심리를 섬세하고 농밀하게 살려 한국어로 조언하세요.`;
+[핵심 요구사항 - 구체적 단계 데이터 반영]
+작가가 설정 변경, 아이디어 추가, 대사 제안, 플롯 구상, 본문 작성 요청 등을 명령하면, 친절하고 날카로운 해설 텍스트와 함께 **현재 단계(${context.currentStep}단계)에 즉시 반영할 수 있는 구체적인 JSON 블록을 응답 끝에 반드시 포함**하세요.
+
+JSON 블록 형식 (반드시 \`\`\`json:action 코드블록으로 감싸주세요):
+만약 1단계라면:
+\`\`\`json:action
+{
+  "targetStep": 1,
+  "type": "update_settings",
+  "label": "1단계 설정에 반영하기",
+  "summary": "제목 및 남녀 주인공 설정 업데이트",
+  "payload": {
+    "title": "변경된 제목(필요시)",
+    "tags": ["태그1", "태그2"],
+    "maleLead": "구체적으로 보강된 남주인공 내용",
+    "femaleLead": "구체적으로 보강된 여주인공 내용",
+    "synopsis": "수정/보강된 시놉시스",
+    "writingStyle": "문체 스타일 수정(필요시)"
+  }
+}
+\`\`\`
+
+만약 2단계라면:
+\`\`\`json:action
+{
+  "targetStep": 2,
+  "type": "add_episode",
+  "label": "2단계에 새 에피소드 플롯 추가",
+  "summary": "제N화 에피소드 얼개 추가",
+  "payload": {
+    "stageId": 1부터 12 사이의 정수 (예: 5),
+    "stageTitle": "5. 첫 관문 통과 (Crossing the First Threshold)",
+    "title": "제N화. 에피소드 제목",
+    "summary": "구체적인 사건 요약",
+    "keyEvents": ["사건 1", "사건 2", "사건 3"],
+    "conflict": "중심 갈등 및 배덕감 요소"
+  }
+}
+\`\`\`
+
+만약 3단계라면:
+\`\`\`json:action
+{
+  "targetStep": 3,
+  "type": "replace_content",
+  "label": "3단계 본문으로 대체하기",
+  "summary": "현재 에피소드 본문 작성안",
+  "payload": {
+    "content": "작성된 소설 본문 내용..."
+  }
+}
+\`\`\`
+
+만약 5단계라면:
+\`\`\`json:action
+{
+  "targetStep": 5,
+  "type": "add_persona",
+  "label": "5단계 독자 페르소나로 추가",
+  "summary": "새로운 커뮤니티 독자 등록",
+  "payload": {
+    "name": "닉네임",
+    "platform": "더쿠 | 리디북스 | 노벨피아 | 아카라이브 | 조아라",
+    "age": "20대 여성",
+    "gender": "여성",
+    "personality": "성격 요약",
+    "toneStyle": "말투 특징",
+    "favoriteGenre": "배덕 로맨스",
+    "avatarColor": "bg-indigo-600"
+  }
+}
+\`\`\`
+
+설명과 소설적 조언은 마크다운으로 먼저 작성하고, 실제 반영할 데이터는 맨 아래 \`\`\`json:action 코드블록 안에 명시하세요.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -38,14 +122,46 @@ export async function askNovelAssistant(
       contents: prompt,
       config: {
         systemInstruction,
-        temperature: 0.8,
+        temperature: 0.85,
       }
     });
 
-    return response.text || '죄송합니다. 영감을 정리하는 중 오류가 발생했습니다. 다시 질문해주세요.';
+    const fullText = response.text || '';
+    let messageText = fullText;
+    let proposal: ActionProposal | undefined = undefined;
+
+    // Parse ```json:action ... ``` block
+    const actionRegex = /```json:action\s*([\s\S]*?)\s*```/;
+    const match = fullText.match(actionRegex);
+
+    if (match && match[1]) {
+      try {
+        const rawJson = JSON.parse(match[1]);
+        proposal = {
+          id: `prop-${Date.now()}`,
+          targetStep: rawJson.targetStep || context.currentStep,
+          type: rawJson.type as ActionType,
+          label: rawJson.label || `${context.currentStep}단계에 즉시 반영`,
+          summary: rawJson.summary || 'AI가 제안한 디테일 내용',
+          payload: rawJson.payload,
+          applied: false
+        };
+        // Remove code block from visible chat text for clean chat bubbles
+        messageText = fullText.replace(actionRegex, '').trim();
+      } catch (parseErr) {
+        console.warn('Action proposal JSON parse failed:', parseErr);
+      }
+    }
+
+    return {
+      messageText,
+      proposal
+    };
   } catch (error) {
     console.error('Gemini Assistant Error:', error);
-    return 'AI 조력자와 연결하는 중 일시적 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+    return {
+      messageText: 'AI 조력자와 연결하는 중 일시적 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+    };
   }
 }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NovelSettings, Episode, CommenterPersona, EpisodeComment } from './types';
+import { NovelSettings, Episode, CommenterPersona, EpisodeComment, ProjectFullData } from './types';
 import { 
   INITIAL_SETTINGS, 
   INITIAL_PERSONAS, 
@@ -12,59 +12,68 @@ import { Step3Writing } from './components/Step3Writing';
 import { Step4Refine } from './components/Step4Refine';
 import { Step5Comments } from './components/Step5Comments';
 import { Step6Viewer } from './components/Step6Viewer';
+import { AuthLockScreen } from './components/AuthLockScreen';
+import { MarkdownSyncModal } from './components/MarkdownSyncModal';
 import { 
   BookMarked, PenTool, GitBranch, FileEdit, 
   Sparkles, MessageSquare, MonitorPlay, Save, 
-  CheckCircle, ChevronRight, Menu, X 
+  CheckCircle, ChevronRight, Menu, X, FileText, 
+  LogOut, ShieldCheck 
 } from 'lucide-react';
 
 export default function App() {
+  // Authentication gate: Must login to enter
+  const [currentUser, setCurrentUser] = useState<string | null>(() => {
+    return sessionStorage.getItem('storyforge_auth_user') || null;
+  });
+
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState<boolean>(false);
+  const [isMarkdownModalOpen, setIsMarkdownModalOpen] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<string>('로컬 자동저장');
 
   // Load from localStorage or use defaults
   const [settings, setSettings] = useState<NovelSettings>(() => {
-    const saved = localStorage.getItem('storyforge_settings');
+    const saved = localStorage.getItem('storyforge_settings_v2');
     return saved ? JSON.parse(saved) : INITIAL_SETTINGS;
   });
 
   const [episodes, setEpisodes] = useState<Episode[]>(() => {
-    const saved = localStorage.getItem('storyforge_episodes');
+    const saved = localStorage.getItem('storyforge_episodes_v2');
     return saved ? JSON.parse(saved) : INITIAL_EPISODES;
   });
 
   const [personas, setPersonas] = useState<CommenterPersona[]>(() => {
-    const saved = localStorage.getItem('storyforge_personas');
+    const saved = localStorage.getItem('storyforge_personas_v2');
     return saved ? JSON.parse(saved) : INITIAL_PERSONAS;
   });
 
   const [comments, setComments] = useState<EpisodeComment[]>(() => {
-    const saved = localStorage.getItem('storyforge_comments');
+    const saved = localStorage.getItem('storyforge_comments_v2');
     if (saved) return JSON.parse(saved);
 
-    // Initial dummy continuous comments
+    // Initial church mentor-mentee binge comments
     return [
       {
         id: 'c-1',
         episodeId: 'ep-1',
         personaId: 'p-1',
-        personaName: '영지물처돌이',
-        platform: '노벨피아',
-        content: '캬 ㅋㅋㅋ 대마탑 수석이 번아웃 와서 똥땅으로 런친 설정 개맛도리네. 마석 펜 꺼내는 폼 보소',
-        likes: 24,
+        personaName: '배덕감중독자',
+        platform: '리디북스',
+        content: '성가대 지휘석에서 입모양으로 [기.도.실.] 하는 거 미쳤냐고 ㅠㅠㅠ 서경 전도사 무릎 떨리는 묘사에서 심장 터짐',
+        likes: 38,
         dislikes: 0,
         createdAt: '1시간 전',
-        reactionTag: '사이다'
+        reactionTag: '텐션폭발'
       },
       {
         id: 'c-2',
         episodeId: 'ep-1',
-        personaId: 'p-3',
-        personaName: '달리는치와와',
+        personaId: 'p-2',
+        personaName: '교회다녀본사람',
         platform: '더쿠',
-        content: '아 미친 카이엔 하품하면서 삽 들고 따라오라는 거 댕치임 ㅠㅠㅠ 엘레나 눈 반짝이는 거 넘 귀여움',
-        likes: 18,
+        content: '와 주일 3부 예배 축도 끝나고 나가는 그 성도들 바글바글한 공기 속에서 은밀하게 둘만 시선 교환하는 거 개현실적이라 더 배덕함;',
+        likes: 27,
         dislikes: 1,
         createdAt: '45분 전',
         reactionTag: '과몰입'
@@ -72,23 +81,23 @@ export default function App() {
       {
         id: 'c-3',
         episodeId: 'ep-2',
-        personaId: 'p-1',
-        personaName: '영지물처돌이',
+        personaId: 'p-3',
+        personaName: '강민우소유권주장',
         platform: '노벨피아',
-        content: '1화에서 텃밭 가꾼다더니 스프링클러 만들다가 마왕 침상 봉인 뜯은 거 실화냐고 ㅋㅋㅋㅋ 스케일 폼 미쳤다',
-        likes: 31,
+        content: '1화에서 뜸들이더니 2화 오자마자 성경책 뺏고 무릎 꿇리기 + 뺨 찰싹 ㄷㄷㄷ 연하남 통제력 개살벌하네 ㅋㅋㅋㅋ',
+        likes: 45,
         dislikes: 0,
         createdAt: '30분 전',
-        reactionTag: '떡밥회수'
+        reactionTag: '배덕감'
       },
       {
         id: 'c-4',
         episodeId: 'ep-2',
-        personaId: 'p-2',
-        personaName: '서사충망령',
-        platform: '리디북스',
-        content: '엘레나가 카이엔의 단순한 귀차니즘을 제국의 방패로 착각하는 감정선 빌드업이 아주 훌륭합니다. 별점 5개 누르고 갑니다.',
-        likes: 15,
+        personaId: 'p-5',
+        personaName: '심야묵상',
+        platform: '조아라',
+        content: '종교적 죄의식과 메조히즘의 쾌락을 오가는 여주의 내면 심리가 너무나 처연하고 아름답습니다. 작가님 필력에 경의를 표합니다.',
+        likes: 19,
         dislikes: 0,
         createdAt: '15분 전',
         reactionTag: '분석'
@@ -98,14 +107,35 @@ export default function App() {
 
   // Auto-save to localStorage
   useEffect(() => {
-    localStorage.setItem('storyforge_settings', JSON.stringify(settings));
-    localStorage.setItem('storyforge_episodes', JSON.stringify(episodes));
-    localStorage.setItem('storyforge_personas', JSON.stringify(personas));
-    localStorage.setItem('storyforge_comments', JSON.stringify(comments));
+    localStorage.setItem('storyforge_settings_v2', JSON.stringify(settings));
+    localStorage.setItem('storyforge_episodes_v2', JSON.stringify(episodes));
+    localStorage.setItem('storyforge_personas_v2', JSON.stringify(personas));
+    localStorage.setItem('storyforge_comments_v2', JSON.stringify(comments));
     setSaveStatus('저장됨');
     const timer = setTimeout(() => setSaveStatus('로컬 자동저장'), 1500);
     return () => clearTimeout(timer);
   }, [settings, episodes, personas, comments]);
+
+  const handleLogout = () => {
+    if (confirm('스튜디오에서 로그아웃하시겠습니까? (작업 중인 내용은 안전하게 자동 저장되어 있습니다.)')) {
+      sessionStorage.removeItem('storyforge_auth_user');
+      setCurrentUser(null);
+    }
+  };
+
+  const handleImportMarkdownData = (data: ProjectFullData) => {
+    setSettings(data.settings);
+    setEpisodes(data.episodes);
+    setPersonas(data.personas);
+    setComments(data.comments);
+    setIsMarkdownModalOpen(false);
+    alert(`[${data.settings.title}] 원고를 성공적으로 불러왔습니다! 이어서 집필을 시작하세요.`);
+  };
+
+  // If user is not authenticated, render Login Lock Screen
+  if (!currentUser) {
+    return <AuthLockScreen onLoginSuccess={(userId) => setCurrentUser(userId)} />;
+  }
 
   const stepsList = [
     { num: 1, label: '1단계: 설정 기획', icon: BookMarked },
@@ -118,7 +148,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
-      {/* LEFT SIDE: AI Chat Assistant (Fixed 360px ~ 420px on desktop) */}
+      {/* LEFT SIDE: AI Chat Assistant (Fixed 360px ~ 400px on desktop) */}
       <div
         className={`fixed inset-y-0 left-0 z-40 w-80 md:w-96 lg:w-[390px] transform transition-transform duration-300 ease-in-out md:static md:translate-x-0 ${
           isMobileChatOpen ? 'translate-x-0' : '-translate-x-full'
@@ -185,15 +215,38 @@ export default function App() {
             })}
           </div>
 
+          {/* Action Bar (Markdown Sync, User & Logout) */}
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400 flex items-center gap-1 font-mono">
+            {/* Markdown Export/Import Button */}
+            <button
+              onClick={() => setIsMarkdownModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-brand-600/30 hover:border-brand-500/50 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition"
+              title="마크다운 파일로 저장 및 불러오기"
+            >
+              <FileText className="w-3.5 h-3.5 text-brand-400" />
+              <span className="hidden sm:inline">마크다운 저장/불러오기</span>
+            </button>
+
+            <span className="text-[11px] text-slate-400 hidden xl:flex items-center gap-1 font-mono">
               <CheckCircle className="w-3 h-3 text-emerald-400" />
               {saveStatus}
             </span>
+
+            {/* User Profile & Logout */}
+            <div className="flex items-center gap-1.5 pl-2 border-l border-slate-800 text-xs text-slate-400">
+              <span className="text-white font-semibold hidden md:inline">{currentUser} 작가님</span>
+              <button
+                onClick={handleLogout}
+                className="p-1.5 rounded-lg hover:bg-slate-800 hover:text-red-400 transition"
+                title="로그아웃"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </header>
 
-        {/* Mobile Step Bar (if screen small) */}
+        {/* Mobile Step Bar */}
         <div className="lg:hidden flex overflow-x-auto border-b border-slate-800 bg-slate-900 px-2 py-1.5 gap-1 scrollbar-none">
           {stepsList.map((step) => (
             <button
@@ -273,6 +326,17 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* Markdown Export & Import Modal */}
+      <MarkdownSyncModal
+        isOpen={isMarkdownModalOpen}
+        onClose={() => setIsMarkdownModalOpen(false)}
+        settings={settings}
+        episodes={episodes}
+        personas={personas}
+        comments={comments}
+        onImportSuccess={handleImportMarkdownData}
+      />
     </div>
   );
 }

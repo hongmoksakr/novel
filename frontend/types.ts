@@ -59,16 +59,31 @@ export interface EpisodeComment {
   reactionTag?: string;
 }
 
+export type ActionType = 
+  | 'update_settings'      // 1단계 설정 반영
+  | 'add_episode'          // 2단계 에피소드 추가
+  | 'update_episode'        // 2단계 에피소드 수정
+  | 'replace_content'      // 3단계 본문 교체
+  | 'append_content'       // 3단계 본문 이어쓰기
+  | 'add_persona'          // 5단계 페르소나 추가
+  | 'add_comment';         // 5단계 댓글 추가
+
+export interface ActionProposal {
+  id: string;
+  targetStep: number;
+  type: ActionType;
+  label: string;
+  summary: string;
+  payload: any;
+  applied?: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
-  actionProposal?: {
-    type: 'apply_settings' | 'apply_outline' | 'apply_episode_content' | 'apply_personas';
-    payload: any;
-    label: string;
-  };
+  proposal?: ActionProposal;
 }
 
 export interface ProjectFullData {
